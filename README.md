@@ -12,7 +12,45 @@ This server exposes 2 tools:
 
 The model writes code that calls `ado.workItems.get(123)` instead of invoking individual tools. Results are projected (only requested fields returned), saving 50-75% of response tokens too.
 
-## Quick Start
+## Install
+
+One-liner for Claude Code:
+
+```bash
+claude mcp add ado -- npx -y ado-code-mode-mcp --org myorg
+```
+
+Replace `myorg` with your Azure DevOps organization (the part before `.visualstudio.com` or after `dev.azure.com/`).
+
+For PAT authentication, set the env var first:
+```bash
+export AZURE_DEVOPS_PAT=your-pat-here
+claude mcp add ado -- npx -y ado-code-mode-mcp --org myorg
+```
+
+For comparison, the official Microsoft ADO MCP server installs with:
+```bash
+claude mcp add azure-devops -- npx -y @azure-devops/mcp myorg
+```
+That loads 99 tools (~98K tokens). This server loads 2 tools (~1K tokens).
+
+### Alternative: `.mcp.json` configuration
+
+```json
+{
+  "mcpServers": {
+    "ado": {
+      "command": "npx",
+      "args": ["-y", "ado-code-mode-mcp", "--org", "myorg"],
+      "env": {
+        "AZURE_DEVOPS_PAT": "your-pat-here"
+      }
+    }
+  }
+}
+```
+
+### Standalone
 
 ```bash
 # With PAT authentication
@@ -20,24 +58,6 @@ AZURE_DEVOPS_ORG=myorg AZURE_DEVOPS_PAT=xxxx npx ado-code-mode-mcp
 
 # With Azure CLI authentication (requires 'az login' first)
 AZURE_DEVOPS_ORG=myorg npx ado-code-mode-mcp
-```
-
-### Claude Code / MCP Client Configuration
-
-Add to your `.mcp.json`:
-```json
-{
-  "mcpServers": {
-    "ado": {
-      "command": "npx",
-      "args": ["-y", "ado-code-mode-mcp"],
-      "env": {
-        "AZURE_DEVOPS_ORG": "myorg",
-        "AZURE_DEVOPS_PAT": "your-pat-here"
-      }
-    }
-  }
-}
 ```
 
 ## Usage
