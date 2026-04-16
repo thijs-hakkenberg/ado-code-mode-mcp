@@ -1,0 +1,61 @@
+{
+  "name": "ado-code-mode-mcp",
+  "version": "0.1.0",
+  "description": "Token-efficient Azure DevOps MCP server using Code Mode pattern — 2 tools instead of 99, 98% fewer bootstrap tokens",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "ado-code-mode-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "azure-devops",
+    "ado",
+    "code-mode",
+    "model-context-protocol",
+    "claude",
+    "token-efficient"
+  ],
+  "author": {
+    "name": "LLM Capability Lab"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thijs-hakkenberg/ado-code-mode-mcp.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/",
+    "docs/",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "azure-devops-node-api": "^15.1.2",
+    "@azure/identity": "^4.10.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.0.0"
+  }
+}
