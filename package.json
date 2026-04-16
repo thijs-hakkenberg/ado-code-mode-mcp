@@ -1,6 +1,6 @@
 {
   "name": "ado-code-mode-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Token-efficient Azure DevOps MCP server using Code Mode pattern — 2 tools instead of 99, 98% fewer bootstrap tokens",
   "type": "module",
   "main": "dist/index.js",
