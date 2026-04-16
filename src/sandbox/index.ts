@@ -64,7 +64,7 @@ export async function executeSandboxed(
   const wrapped = `(async () => { ${code}\n return typeof result !== 'undefined' ? result : undefined; })()`;
 
   try {
-    const script = new vm.Script(wrapped, { timeout });
+    const script = new vm.Script(wrapped);
     const output = await script.runInContext(context, { timeout });
     return {
       success: true,

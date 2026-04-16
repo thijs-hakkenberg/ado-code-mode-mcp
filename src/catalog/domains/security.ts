@@ -1,0 +1,7 @@
+import { Domain } from "../types.js";
+import type { CatalogEntry } from "../types.js";
+
+export const securityEntries: CatalogEntry[] = [
+  { id: "security.getAlerts", domain: Domain.Security, name: "getAlerts", title: "Get Security Alerts", description: "Get Advanced Security alerts for a repository.", params: [{ name: "project", type: "string", required: true, description: "Project name" }, { name: "repoId", type: "string", required: true, description: "Repository ID" }, { name: "state", type: "string", required: false, description: "Alert state filter: active, dismissed, fixed" }], returns: "Alert[] — security alerts with severity, rule, state", example: 'await ado.security.getAlerts({ project: "MyProj", repoId: "abc" })', tags: ["security", "alerts", "vulnerability", "scanning", "sast", "dependency"], readOnly: true },
+  { id: "security.getAlertDetails", domain: Domain.Security, name: "getAlertDetails", title: "Get Alert Details", description: "Get details of a specific security alert.", params: [{ name: "project", type: "string", required: true, description: "Project name" }, { name: "repoId", type: "string", required: true, description: "Repository ID" }, { name: "alertId", type: "number", required: true, description: "Alert ID" }], returns: "Alert — full alert with code location, remediation, and history", example: 'await ado.security.getAlertDetails({ project: "MyProj", repoId: "abc", alertId: 42 })', tags: ["security", "alert", "details", "vulnerability", "fix", "remediation"], readOnly: true },
+];
