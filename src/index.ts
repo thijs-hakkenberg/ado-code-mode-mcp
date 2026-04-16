@@ -44,8 +44,8 @@ async function main() {
     mode: (values.auth as "pat" | "azcli" | "auto") ?? "auto",
   });
 
-  // Establish connection once at startup
-  const connection = await createConnection(org as string, authHandler);
+  // Establish connection once at startup; refresh for azcli (bearer tokens expire ~1h)
+  let connection = await createConnection(org as string, authHandler);
 
   // Lazy API client cache — each client is initialised on first use
   type WitApi     = Awaited<ReturnType<typeof connection.getWorkItemTrackingApi>>;
@@ -83,6 +83,19 @@ async function main() {
   const releaseApi = async () => { if (!_release) _release = await connection.getReleaseApi();           return _release; };
   const testApi    = async () => { if (!_test)    _test    = await connection.getTestApi();              return _test; };
   const testPlanApi = async () => { if (!_testPlan) _testPlan = await connection.getTestPlanApi();       return _testPlan; };
+
+  // Refresh azcli bearer token before it expires (~1h); clears cached clients so they reinit
+  if (authHandler.mode === "azcli") {
+    setInterval(() => {
+      createConnection(org as string, authHandler).then((newConn) => {
+        connection = newConn;
+        _wit = null; _work = null; _git = null; _build = null; _core = null;
+        _wiki = null; _alert = null; _pipes = null; _release = null; _test = null; _testPlan = null;
+      }).catch((err) => {
+        console.error("Warning: failed to refresh Azure CLI token:", err.message ?? err);
+      });
+    }, 50 * 60 * 1000); // 50 min — safely inside the 60-min window
+  }
 
   // Direct REST helpers for APIs not in the SDK (wiki pages, search, test plans)
   const authHeader = () => authHandler.getAuthorizationHeader();
@@ -153,13 +166,9 @@ async function main() {
         return api.createWorkItem({}, doc, project, type);
       },
 
-      update: async ({ id, fields, project }: { id: number; fields: Record<string, unknown>; project?: string }) => {
+      update: async (id: number, patches: { path: string; value: unknown; op?: string }[], project?: string) => {
         const api = await witApi();
-        const doc = Object.entries(fields).map(([key, val]) => ({
-          op: "add",
-          path: `/fields/${key}`,
-          value: val,
-        }));
+        const doc = patches.map((p) => ({ op: p.op ?? "add", path: p.path, value: p.value }));
         return api.updateWorkItem({}, doc, id, project);
       },
 
@@ -174,35 +183,37 @@ async function main() {
         return api.queryByWiql({ query: wiql }, teamContext, undefined, top);
       },
 
-      list: async ({ project, type, state, top = 50 }: { project: string; type?: string; state?: string; top?: number }) => {
+      list: async ({ project, team, type, state, top = 50 }: { project: string; team?: string; type?: string; state?: string; top?: number }) => {
         const api = await witApi();
         let query = `SELECT [System.Id],[System.Title],[System.State],[System.AssignedTo],[System.WorkItemType]`
           + ` FROM WorkItems WHERE [System.TeamProject] = '${project}'`;
         if (type)  query += ` AND [System.WorkItemType] = '${type}'`;
         if (state) query += ` AND [System.State] = '${state}'`;
         query += " ORDER BY [System.ChangedDate] DESC";
-        const result = await api.queryByWiql({ query }, { project }, undefined, top);
+        const teamContext = team ? { project, team } : { project };
+        const result = await api.queryByWiql({ query }, teamContext, undefined, top);
         if (!result.workItems?.length) return [];
         const ids = result.workItems.map((wi) => wi.id!);
         return api.getWorkItems(ids, ["System.Id", "System.Title", "System.State", "System.AssignedTo", "System.WorkItemType"]);
       },
 
-      addComment: async ({ id, comment, project }: { id: number; comment: string; project: string }) => {
+      addComment: async (id: number, text: string, project?: string) => {
+        if (!project) throw new Error("workItems.addComment requires project as the third argument");
         const api = await witApi();
-        return api.addComment({ text: comment }, project, id);
+        return api.addComment({ text }, project, id);
       },
 
-      link: async ({ id, targetId, relationType, project }: { id: number; targetId: number; relationType: string; project?: string }) => {
+      link: async (sourceId: number, targetId: number, linkType = "System.LinkTypes.Related", project?: string) => {
         const api = await witApi();
         const doc = [{
           op: "add",
           path: "/relations/-",
           value: {
-            rel: relationType,
+            rel: linkType,
             url: `https://dev.azure.com/${org}/_apis/wit/workItems/${targetId}`,
           },
         }];
-        return api.updateWorkItem({}, doc, id, project);
+        return api.updateWorkItem({}, doc, sourceId, project);
       },
 
       getChildren: async (id: number) => {
@@ -218,6 +229,46 @@ async function main() {
       myWorkItems: async () => {
         const api = await witApi();
         return api.getAccountMyWorkData();
+      },
+
+      getRevisions: async (id: number) => {
+        const api = await witApi();
+        return api.getRevisions(id);
+      },
+
+      getUpdates: async (id: number) => {
+        return restGet(`https://dev.azure.com/${org}/_apis/wit/workItems/${id}/updates?api-version=7.0`);
+      },
+
+      getComments: async (id: number, project?: string) => {
+        if (!project) throw new Error("workItems.getComments requires project as the second argument");
+        const api = await witApi();
+        return api.getComments(project, id);
+      },
+
+      removeLink: async (id: number, relationIndex: number, project?: string) => {
+        const api = await witApi();
+        const doc = [{ op: "remove", path: `/relations/${relationIndex}` }];
+        return api.updateWorkItem({}, doc, id, project);
+      },
+
+      recycle: async (id: number, project?: string) => {
+        const api = await witApi();
+        return api.deleteWorkItem(id, project);
+      },
+
+      restore: async (id: number, project?: string) => {
+        const api = await witApi();
+        return api.restoreWorkItem({ isDeleted: false } as never, id, project);
+      },
+
+      getTypes: async (project: string) => {
+        const api = await witApi();
+        return api.getWorkItemTypes(project);
+      },
+
+      getStates: async (project: string, type: string) => {
+        return restGet(`https://dev.azure.com/${org}/${project}/_apis/wit/workitemtypes/${encodeURIComponent(type)}/states?api-version=7.0`);
       },
     },
 
@@ -286,8 +337,8 @@ async function main() {
       getPullRequest: async (id: number, repoId?: string, project?: string) => {
         const api = await gitApi();
         if (repoId) return api.getPullRequest(repoId, id, project);
-        // Search across repos
-        return restGet(`https://dev.azure.com/${org}/${project ?? "_"}/_apis/git/pullrequests/${id}?api-version=7.0`);
+        if (!project) throw new Error("getPullRequest requires either repoId or project for cross-repo lookup");
+        return restGet(`https://dev.azure.com/${org}/${project}/_apis/git/pullrequests/${id}?api-version=7.0`);
       },
 
       createPullRequest: async ({ repoId, title, source, target = "main", description, project }: { repoId: string; title: string; source: string; target?: string; description?: string; project?: string }) => {
@@ -330,9 +381,14 @@ async function main() {
       },
 
       getDiff: async ({ repoId, base, target, project }: { repoId: string; base: string; target: string; project?: string }) => {
+        const isSha = (s: string) => /^[0-9a-f]{40}$/i.test(s);
+        const baseType = isSha(base) ? "commit" : "branch";
+        const targetType = isSha(target) ? "commit" : "branch";
         const baseEnc = encodeURIComponent(base);
         const targetEnc = encodeURIComponent(target);
-        return restGet(`https://dev.azure.com/${org}/${project ?? "_"}/_apis/git/repositories/${repoId}/diffs/commits?baseVersion=${baseEnc}&targetVersion=${targetEnc}&api-version=7.0`);
+        return restGet(
+          `https://dev.azure.com/${org}/${project ?? "_"}/_apis/git/repositories/${repoId}/diffs/commits?baseVersion=${baseEnc}&baseVersionType=${baseType}&targetVersion=${targetEnc}&targetVersionType=${targetType}&api-version=7.0`,
+        );
       },
 
       getPullRequestThreads: async ({ repoId, pullRequestId, project }: { repoId: string; pullRequestId: number; project?: string }) => {
@@ -421,12 +477,17 @@ async function main() {
         return api.getDefinition(project, definitionId);
       },
 
-      listBuilds: async ({ project, definitionId, top = 20 }: { project: string; definitionId?: number; top?: number }) => {
+      listBuilds: async ({ project, definitionId, status, top = 20 }: { project: string; definitionId?: number; status?: string; top?: number }) => {
         const api = await buildApi();
+        // BuildStatus: notStarted=1, inProgress=2, cancelling=4, completed=8, all=31
+        const statusMap: Record<string, number> = { notStarted: 1, inProgress: 2, cancelling: 4, completed: 8, all: 31 };
+        const statusFilter = status ? statusMap[status] as never : undefined;
         return api.getBuilds(
           project,
           definitionId ? [definitionId] : undefined,
-          undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+          undefined, undefined, undefined, undefined, undefined, undefined,
+          statusFilter,
+          undefined, undefined, undefined,
           top,
         );
       },
@@ -453,7 +514,16 @@ async function main() {
       runPipeline: async ({ project, definitionId, branch, parameters }: { project: string; definitionId: number; branch?: string; parameters?: Record<string, string> }) => {
         const api = await pipesApi();
         return api.runPipeline(
-          { templateParameters: parameters },
+          {
+            templateParameters: parameters,
+            ...(branch && {
+              resources: {
+                repositories: {
+                  self: { refName: branch.startsWith("refs/") ? branch : `refs/heads/${branch}` },
+                },
+              },
+            }),
+          },
           project,
           definitionId,
         );
